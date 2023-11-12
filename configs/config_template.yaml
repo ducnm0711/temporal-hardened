@@ -1,0 +1,160 @@
+log:
+  stdout: true
+  level: {{ .Values.server.config.logLevel | quote }}
+
+persistence:
+  defaultStore: {{ .Values.server.config.persistence.defaultStore }}
+  visibilityStore: visibility
+
+numHistoryShards: {{ .Values.server.config.numHistoryShards }}
+datastores:
+  {{- with .Values.server.config.persistence.additionalStores }}
+  {{- toYaml . | nindent 8 }}
+  {{- end }}
+  default:
+    {{- with .Values.server.config.persistence.default.faultInjection}}
+    faultInjection:
+        {{- toYaml . | nindent 12 }}
+    {{- end }}
+    sql:
+      pluginName: "postgres"
+      driverName: "postgres"
+      databaseName: "{{ .Values.postgres.databaseName }}"
+      connectAddr: "{{ .Values.postgres.svc }}:{{ .Values.postgres.port }}"
+      connectProtocol: "tcp"
+      user: "{{ .SecretTpl.POSTGRES_USER }}"
+      password: "{{ .SecretTpl.POSTGRES_PASSWORD }}"
+      maxConnLifetime: 1h
+      maxConns: 20
+  visibility:
+    sql:
+      pluginName: "postgres"
+      driverName: "postgres"
+      databaseName: "{{ .Values.postgres.visibilityDatabaseName }}"
+      connectAddr: "{{ .Values.postgres.svc }}:{{ .Values.postgres.port }}"
+      connectProtocol: "tcp"
+      user: "{{ .SecretTpl.POSTGRES_VIS_USER }}"
+      password: "{{ .SecretTpl.POSTGRES_VIS_PASSWORD }}"
+      maxConnLifetime: 1h
+      maxConns: 20
+
+global:
+  membership:
+    name: temporal
+    maxJoinDuration: 30s
+    broadcastAddress: {{ `{{ default .Env.POD_IP "0.0.0.0" }}` }}
+
+  pprof:
+    port: 7936
+
+  {{- if .Values.server.config.tls }}
+  tls:
+    {{- with .Values.server.config.tls }}
+    {{- toYaml . | nindent 10 }}
+    {{- end }}
+  {{- end }}
+
+services:
+  frontend:
+    rpc:
+      grpcPort: {{ include "temporal.frontend.grpcPort" $ }}
+      membershipPort: {{ include "temporal.frontend.membershipPort" $ }}
+      bindOnIP: "0.0.0.0"
+    metrics:
+      tags:
+        type: frontend
+      prometheus:
+        timerType: {{ default .Values.server.metrics.prometheus.timerType .Values.server.frontend.metrics.prometheus.timerType }}
+        listenAddress: "0.0.0.0:9090"
+
+  history:
+    rpc:
+      grpcPort: {{ include "temporal.history.grpcPort" $ }}
+      membershipPort: {{ include "temporal.history.membershipPort" $ }}
+      bindOnIP: "0.0.0.0"
+    metrics:
+      tags:
+        type: history
+      prometheus:
+        timerType: {{ default .Values.server.metrics.prometheus.timerType .Values.server.history.metrics.prometheus.timerType }}
+        listenAddress: "0.0.0.0:9090"
+
+  matching:
+    rpc:
+      grpcPort: {{ include "temporal.matching.grpcPort" $ }}
+      membershipPort: {{ include "temporal.matching.membershipPort" $ }}
+      bindOnIP: "0.0.0.0"
+    metrics:
+      tags:
+        type: matching
+      prometheus:
+        timerType: {{ default .Values.server.metrics.prometheus.timerType .Values.server.matching.metrics.prometheus.timerType }}
+        listenAddress: "0.0.0.0:9090"
+
+  worker:
+    rpc:
+      grpcPort: {{ include "temporal.worker.grpcPort" $ }}
+      membershipPort: {{ include "temporal.worker.membershipPort" $ }}
+      bindOnIP: "0.0.0.0"
+    metrics:
+      tags:
+        type: worker
+      prometheus:
+        timerType: {{ default .Values.server.metrics.prometheus.timerType .Values.server.worker.metrics.prometheus.timerType }}
+        listenAddress: "0.0.0.0:9090"
+
+{{- if .Values.server.config.clusterMetadata }}
+clusterMetadata:
+{{- with .Values.server.config.clusterMetadata }}
+{{- toYaml . | nindent 8 }}
+{{- end }}
+{{- else }}
+clusterMetadata:
+  enableGlobalDomain: false
+  failoverVersionIncrement: 10
+  masterClusterName: "active"
+  currentClusterName: "active"
+  clusterInformation:
+    active:
+      enabled: true
+      initialFailoverVersion: 1
+      rpcName: "temporal-frontend"
+      rpcAddress: "127.0.0.1:7933"
+{{- end }}
+
+{{- if .Values.server.config.dcRedirectionPolicy }}
+dcRedirectionPolicy:
+{{- with .Values.server.config.dcRedirectionPolicy }}
+{{- toYaml . | nindent 8 }}
+{{- end }}
+{{- else }}
+dcRedirectionPolicy:
+  policy: "noop"
+  toDC: ""
+{{- end }}
+
+{{- if .Values.server.archival }}
+archival:
+{{- with .Values.server.archival }}
+{{- toYaml . | nindent 6 }}
+{{- end }}
+{{- else }}
+archival:
+  status: "disabled"
+{{- end }}
+
+{{- if .Values.server.namespaceDefaults }}
+namespaceDefaults:
+{{- with .Values.server.namespaceDefaults }}
+{{- toYaml . | nindent 6 }}
+{{- end }}
+{{- else }}
+
+{{- end }}
+
+publicClient:
+  hostPort: "{{ include "temporal.componentname" (list $ "frontend") }}:{{ .Values.server.frontend.service.port }}"
+
+dynamicConfigClient:
+  filepath: "/etc/temporal/dynamic_config/dynamic_config.yaml"
+  pollInterval: "10s"

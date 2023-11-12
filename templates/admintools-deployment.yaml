@@ -46,9 +46,6 @@ spec:
               containerPort: 22
               protocol: TCP
           env:
-            # TEMPORAL_CLI_ADDRESS is deprecated, use TEMPORAL_ADDRESS instead
-            - name: TEMPORAL_CLI_ADDRESS
-              value: {{ include "temporal.fullname" . }}-frontend:{{ include "temporal.frontend.grpcPort" . }}
             - name: TEMPORAL_ADDRESS
               value: {{ include "temporal.fullname" . }}-frontend:{{ include "temporal.frontend.grpcPort" . }}
           {{- if .Values.admintools.additionalEnv }}

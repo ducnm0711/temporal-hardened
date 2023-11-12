@@ -36,11 +36,11 @@ server:
     # Enable Prometheus ServiceMonitor
     # Use this if you installed the Prometheus Operator (https://github.com/coreos/prometheus-operator).
     serviceMonitor:
-      enabled: false
+      enabled: true
       interval: 30s
       # Set additional lables to all the ServiceMonitor resources
-      additionalLabels: {}
-      #  label1: value1
+      additionalLabels:
+       label1: value1
       #  label2: value2
       # Set Prometheus metric_relabel_configs via ServiceMonitor
       # Use metricRelabelings to adjust metric and label names as needed
@@ -128,70 +128,44 @@ server:
       additionalStores: {}
 
       default:
-        driver: "cassandra"
-
-        cassandra:
-          hosts: []
-          # port: 9042
-          keyspace: "temporal"
-          user: "user"
-          password: "password"
-          existingSecret: ""
-          replicationFactor: 1
-          consistency:
-            default:
-              consistency: "local_quorum"
-              serialConsistency: "local_serial"
-          # datacenter: "us-east-1a"
-          # maxQPS: 1000
-          # maxConns: 2
+        driver: "sql"
 
         sql:
-          driver: "mysql"
-          host: "mysql"
-          port: 3306
-          database: "temporal"
-          user: "temporal"
-          password: "temporal"
-          existingSecret: ""
-          secretName: ""
+          driver: "postgres"
+          host: _HOST_
+          port: 5432
+          database: temporal
+          user: _USERNAME_
+          password: _PASSWORD_
+          # for a production deployment use this instead of `password` and provision the secret beforehand e.g. with a sealed secret
+          # it has a single key called `password`
+          # existingSecret: temporal-default-store
           maxConns: 20
           maxConnLifetime: "1h"
-          # connectAttributes:
-          # tx_isolation: 'READ-COMMITTED'
+          # tls:
+          #  enabled: true
+          #  enableHostVerification: true
+          #  serverName: _HOST_ # this is strictly required when using serverless CRDB offerings
 
       visibility:
-        driver: "cassandra"
-
-        cassandra:
-          hosts: []
-          # port: 9042
-          keyspace: "temporal_visibility"
-          user: "user"
-          password: "password"
-          existingSecret: ""
-          # datacenter: "us-east-1a"
-          # maxQPS: 1000
-          # maxConns: 2
-          replicationFactor: 1
-          consistency:
-            default:
-              consistency: "local_quorum"
-              serialConsistency: "local_serial"
+        driver: "sql"
 
         sql:
-          driver: "mysql"
-          host: "mysql"
-          port: 3306
-          database: "temporal_visibility"
-          user: "temporal"
-          password: "temporal"
-          existingSecret: ""
-          secretName: ""
+          driver: "postgres"
+          host: _HOST_
+          port: 5432
+          database: temporal_visibility
+          user: _USERNAME_
+          password: _PASSWORD_
+          # for a production deployment use this instead of `password` and provision the secret beforehand e.g. with a sealed secret
+          # it has a single key called `password`
+          # existingSecret: temporal-visibility-store
           maxConns: 20
           maxConnLifetime: "1h"
-          # connectAttributes:
-          #   tx_isolation: 'READ-COMMITTED'
+          # tls:
+          #  enabled: true
+          #  enableHostVerification: true
+          #  serverName: _HOST_ # this is strictly required when using serverless CRDB offerings
 
   frontend:
     service:
@@ -386,7 +360,56 @@ schema:
   containerSecurityContext: {}
   securityContext: {}
 
+elasticsearch:
+  enabled: true
+  replicas: 3
+  persistence:
+    enabled: false
+  imageTag: 7.17.3
+  host: elasticsearch-master-headless
+  scheme: http
+  port: 9200
+  version: "v7"
+  logLevel: "error"
+  username: ""
+  password: ""
+  visibilityIndex: "temporal_visibility_v1_dev"
+
+prometheus:
+  enabled: true
+  nodeExporter:
+    enabled: false
+
 grafana:
+  enabled: true
+  replicas: 1
+  testFramework:
+    enabled: false
+  rbac:
+    create: false
+    pspEnabled: false
+    namespaced: true
+  dashboardProviders:
+    dashboardproviders.yaml:
+      apiVersion: 1
+      providers:
+        - name: "default"
+          orgId: 1
+          folder: ""
+          type: file
+          disableDeletion: false
+          editable: true
+          options:
+            path: /var/lib/grafana/dashboards/default
+  datasources:
+    datasources.yaml:
+      apiVersion: 1
+      datasources:
+        - name: TemporalMetrics
+          type: prometheus
+          url: http://{{ .Release.Name }}-prometheus-server
+          access: proxy
+          isDefault: true
   dashboards:
     default:
       server-general-github:
@@ -414,6 +437,5 @@ grafana:
         url: https://raw.githubusercontent.com/temporalio/dashboards/helm/misc/worker-service-specific.json
         datasource: TemporalMetrics
 
-
-postgres:
+mysql:
   enabled: false
